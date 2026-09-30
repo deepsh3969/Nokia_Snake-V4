@@ -517,44 +517,7 @@ class HandTracker:
 
         try:
 
-            height, width = frame.shape[:2]
-
-            cv2.rectangle(
-                frame,
-                (0, 0),
-                (width, 44),
-                (5, 10, 5),
-                -1
-            )
-
             status = result.get("status")
-
-            if status == STATUS_CAMERA_UNAVAILABLE:
-
-                banner = "CAMERA UNAVAILABLE"
-
-            elif status == STATUS_TRACKING_UNAVAILABLE:
-
-                banner = "LIVE  |  HAND TRACKING UNAVAILABLE"
-
-            elif result.get("tracking"):
-
-                banner = "LIVE  |  HAND DETECTED"
-
-            else:
-
-                banner = "LIVE  |  SHOW YOUR HAND"
-
-            cv2.putText(
-                frame,
-                banner,
-                (10, 29),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.55,
-                (215, 255, 60),
-                2,
-                cv2.LINE_AA
-            )
 
             if status == STATUS_OK:
 
@@ -574,7 +537,7 @@ class HandTracker:
 
                 else:
 
-                    gesture_text = "READY"
+                    gesture_text = "SHOW YOUR HAND"
 
                 cv2.putText(
                     frame,

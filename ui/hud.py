@@ -3,6 +3,37 @@ import pygame
 from ui.components import Panel
 
 
+# -------------------------------------------------------
+# Font / text surface caches
+# (fonts are expensive to create; rendering the same
+#  strings every frame is expensive too)
+# -------------------------------------------------------
+
+_font_cache = {}
+_text_cache = {}
+
+_SYM_KEY = "symbol"
+
+
+def _font(size):
+    f = _font_cache.get(size)
+    if f is None:
+        f = pygame.font.Font(None, size)
+        _font_cache[size] = f
+    return f
+
+
+def _render(key, font, text, color):
+    ck = (key, text, color)
+    surf = _text_cache.get(ck)
+    if surf is None:
+        surf = font.render(text, True, color)
+        if len(_text_cache) > 4096:
+            _text_cache.clear()
+        _text_cache[ck] = surf
+    return surf
+
+
 DIRECTION_ARROWS = {
     "UP": "↑",
     "DOWN": "↓",
@@ -61,9 +92,9 @@ class HUD:
                 else (225, 240, 190)
             )
 
-        font = pygame.font.Font(None, size)
+        font = _font(size)
 
-        surface = font.render(text, True, color)
+        surface = _render(size, font, text, color)
 
         screen.blit(surface, (x, y))
 
@@ -71,9 +102,11 @@ class HUD:
 
     def draw_right(self, screen, text, right, y, size=20, color=None):
 
-        font = pygame.font.Font(None, size)
+        color = color or (225, 240, 190)
 
-        surface = font.render(text, True, color or (225, 240, 190))
+        font = _font(size)
+
+        surface = _render(size, font, text, color)
 
         screen.blit(surface, (right - surface.get_width(), y))
 
@@ -100,11 +133,16 @@ class HUD:
 
             else:
 
-                font = pygame.font.Font(None, size)
+                font = _font(size)
 
                 dy = y
 
-            surface = font.render(text, True, color)
+            surface = _render(
+                _SYM_KEY if is_symbol else size,
+                font,
+                text,
+                color
+            )
 
             screen.blit(surface, (cursor, dy))
 
@@ -121,7 +159,7 @@ class HUD:
             font = (
                 self.symbol_font
                 if is_symbol
-                else pygame.font.Font(None, size)
+                else _font(size)
             )
 
             total += font.size(text)[0] + gap
