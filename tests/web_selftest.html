@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Nokia Snake Web — automated self-test</title>
+  <style>
+    body { font-family: Consolas, monospace; background: #111; color: #ddd; padding: 20px; }
+    .pass { color: #6f6; }
+    .fail { color: #f66; font-weight: bold; }
+    pre { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+<h1>Self-test</h1>
+<pre id="out">running…</pre>
+
+<script src="../web/script.js"></script>
+<script>
+(function () {
+  var results = [];
+  function t(name, fn) {
+    try { fn(); results.push("PASS " + name); }
+    catch (e) { results.push("FAIL " + name + " :: " + (e && e.message ? e.message : e)); }
+  }
+  function assert(cond, msg) { if (!cond) throw new Error(msg || "assertion failed"); }
+
+  /* ---------- module ---------- */
+  t("NSG module exposes classes", function () {
+    assert(window.NSG, "window.NSG missing");
+    assert(NSG.SnakeGame && NSG.SwipeDetector && NSG.handPose && NSG.GestureController, "classes missing");
+  });
+
+  /* ---------- SwipeDetector ---------- */
+  t("swipe RIGHT detected", function () {
+    var sd = new NSG.SwipeDetector(), got = null;
+    for (var tt = 0; tt <= 300; tt += 30) {
+      var r = sd.feed(0.2 + 0.3 * (tt / 300), 0.5, tt);
+      if (r) got = r;
+    }
+    assert(got === "RIGHT", "got " + got);
+  });
+
+  t("swipe UP detected", function () {
+    var sd = new NSG.SwipeDetector(), got = null;
+    for (var tt = 0; tt <= 300; tt += 30) {
+      var r = sd.feed(0.5, 0.7 - 0.3 * (tt / 300), tt);
+      if (r) got = r;
+    }
+    assert(got === "UP", "got " + got);
+  });
+
+  t("small motion does not fire", function () {
+    var sd = new NSG.SwipeDetector();
+    for (var tt = 0; tt <= 400; tt += 40) {
+      var r = sd.feed(0.5 + 0.05 * (tt / 400), 0.5, tt);
+      assert(r === null, "fired at t=" + tt + " (" + r + ")");
+    }
+  });
+
+  t("cooldown blocks instant re-fire", function () {
+    var sd = new NSG.SwipeDetector(), first = null, second = null;
+    for (var tt = 0; tt <= 300; tt += 30) {
+      var r = sd.feed(0.2 + 0.3 * (tt / 300), 0.5, tt);
+      if (r) first = r;
+    }
+    assert(first === "RIGHT", "first fire failed");
+    // immediate opposite motion inside cooldown
+    for (var t2 = 320; t2 <= 420; t2 += 30) {
+      var r2 = sd.feed(0.9 - 0.3 * ((t2 - 320) / 100), 0.5, t2);
+      if (r2) second = r2;
+    }
+    assert(second === null, "cooldown violated: " + second);
+    // after cooldown expires a fresh swipe works
+    var third = null;
+    for (var t3 = 800; t3 <= 1100; t3 += 50) {
+      var r3 = sd.feed(0.3 + 0.3 * ((t3 - 800) / 300), 0.5, t3);
+      if (r3) third = r3;
+    }
+    assert(third === "RIGHT", "post-cooldown fire failed: " + third);
+  });
+
+  t("ambiguous diagonal ignored", function () {
+    var sd = new NSG.SwipeDetector(), got = null;
+    for (var tt = 0; tt <= 300; tt += 30) {
+      var f = tt / 300;
+      var r = sd.feed(0.2 + 0.3 * f, 0.2 + 0.3 * f, tt);
+      if (r) got = r;
+    }
+    assert(got === null, "fired " + got);
+  });
+
+  /* ---------- handPose ---------- */
+  function makeHand(pose) {
+    var lm = [];
+    for (var i = 0; i < 21; i++) lm.push({ x: 0.5, y: 0.6, z: 0 });
+    lm[0] = { x: 0.50, y: 0.90, z: 0 };   // wrist
+    lm[1] = { x: 0.44, y: 0.78, z: 0 };
+    lm[2] = { x: 0.40, y: 0.70, z: 0 };
+    lm[5] = { x: 0.44, y: 0.60, z: 0 };   // index mcp
+    lm[6] = { x: 0.43, y: 0.45, z: 0 };
+    lm[9] = { x: 0.50, y: 0.58, z: 0 };   // middle mcp
+    lm[10] = { x: 0.50, y: 0.42, z: 0 };
+    lm[13] = { x: 0.56, y: 0.60, z: 0 };  // ring mcp
+    lm[14] = { x: 0.57, y: 0.45, z: 0 };
+    lm[17] = { x: 0.62, y: 0.65, z: 0 };  // pinky mcp
+    lm[18] = { x: 0.63, y: 0.52, z: 0 };
+
+    if (pose === "open") {
+      lm[7] = { x: 0.43, y: 0.37, z: 0 }; lm[8] = { x: 0.43, y: 0.30, z: 0 };
+      lm[11] = { x: 0.50, y: 0.34, z: 0 }; lm[12] = { x: 0.50, y: 0.27, z: 0 };
+      lm[15] = { x: 0.57, y: 0.37, z: 0 }; lm[16] = { x: 0.57, y: 0.30, z: 0 };
+      lm[19] = { x: 0.64, y: 0.44, z: 0 }; lm[20] = { x: 0.65, y: 0.38, z: 0 };
+      lm[3] = { x: 0.42, y: 0.66, z: 0 }; lm[4] = { x: 0.34, y: 0.56, z: 0 };
+    } else if (pose === "fist") {
+      lm[7] = { x: 0.44, y: 0.52, z: 0 }; lm[8] = { x: 0.45, y: 0.50, z: 0 };
+      lm[11] = { x: 0.50, y: 0.48, z: 0 }; lm[12] = { x: 0.50, y: 0.46, z: 0 };
+      lm[15] = { x: 0.57, y: 0.51, z: 0 }; lm[16] = { x: 0.57, y: 0.49, z: 0 };
+      lm[19] = { x: 0.64, y: 0.56, z: 0 }; lm[20] = { x: 0.64, y: 0.54, z: 0 };
+      lm[3] = { x: 0.44, y: 0.70, z: 0 }; lm[4] = { x: 0.48, y: 0.66, z: 0 };
+    } else if (pose === "pinch") {
+      lm[7] = { x: 0.43, y: 0.37, z: 0 }; lm[8] = { x: 0.43, y: 0.30, z: 0 };
+      lm[11] = { x: 0.50, y: 0.34, z: 0 }; lm[12] = { x: 0.50, y: 0.27, z: 0 };
+      lm[15] = { x: 0.57, y: 0.37, z: 0 }; lm[16] = { x: 0.57, y: 0.30, z: 0 };
+      lm[19] = { x: 0.64, y: 0.44, z: 0 }; lm[20] = { x: 0.65, y: 0.38, z: 0 };
+      lm[3] = { x: 0.45, y: 0.36, z: 0 }; lm[4] = { x: 0.44, y: 0.31, z: 0 }; // thumb touches index tip
+    }
+    return lm;
+  }
+
+  t("open palm detected", function () {
+    assert(NSG.handPose.isOpenPalm(makeHand("open")) === true, "open palm not detected");
+  });
+  t("fist is not open palm", function () {
+    assert(NSG.handPose.isOpenPalm(makeHand("fist")) === false, "fist misdetected");
+  });
+  t("pinch detected", function () {
+    assert(NSG.handPose.isPinch(makeHand("pinch")) === true, "pinch not detected");
+  });
+  t("open hand is not pinch", function () {
+    assert(NSG.handPose.isPinch(makeHand("open")) === false, "open hand misdetected as pinch");
+  });
+
+  /* ---------- SnakeGame ---------- */
+  var canvas = document.createElement("canvas");
+  canvas.width = 480; canvas.height = 480;
+  document.body.appendChild(canvas);
+
+  var game = new NSG.SnakeGame(canvas, {});
+
+  t("initial state READY, snake length 3, moving right", function () {
+    assert(game.state === "READY", "state " + game.state);
+    assert(game.snake.length === 3, "len " + game.snake.length);
+    assert(game.dir === NSG.DIRS.RIGHT, "dir " + game.dir.name);
+    assert(game.food && game.food.x !== undefined, "no food");
+  });
+
+  t("start() -> PLAYING", function () {
+    game.start();
+    assert(game.state === "PLAYING", "state " + game.state);
+    game.state = "PAUSED"; // freeze the rAF stepper for the remaining tests
+  });
+
+  t("180° reversal rejected", function () {
+    var ok = game.setDirection("LEFT");
+    assert(ok === false, "LEFT accepted while moving RIGHT");
+    assert(game.queue.length === 0, "queue polluted");
+  });
+
+  t("valid turn accepted + direction buffer capped", function () {
+    game.queue = []; game.dir = NSG.DIRS.RIGHT;
+    assert(game.setDirection("UP") === true, "UP rejected");
+    assert(game.setDirection("RIGHT") === true, "RIGHT after UP rejected (diagonal ok to queue)");
+    assert(game.setDirection("DOWN") === false, "third direction accepted");
+    assert(game.setDirection("RIGHT") === false, "duplicate accepted");
+    game.queue = []; game.dir = NSG.DIRS.RIGHT;
+  });
+
+  t("eating food grows snake and scores", function () {
+    game._resetBoard();
+    game.state = "PAUSED";
+    var lenBefore = game.snake.length;
+    var scoreBefore = game.score;
+    game.food = { x: 9, y: 12 }; // directly ahead of head (8,12) moving RIGHT
+    game._step();
+    assert(game.score === scoreBefore + game.pointsPerFood, "score " + game.score);
+    assert(game.snake.length === lenBefore + 1, "len " + game.snake.length);
+    assert(game.foods === 1, "foods " + game.foods);
+    // new food must not spawn on the snake
+    for (var i = 0; i < game.snake.length; i++) {
+      assert(!(game.food.x === game.snake[i].x && game.food.y === game.snake[i].y), "food on snake");
+    }
+  });
+
+  t("wall collision -> GAME OVER", function () {
+    game._resetBoard();
+    game.state = "PAUSED";
+    game.snake[0] = { x: 23, y: 12 };
+    game.dir = NSG.DIRS.RIGHT;
+    game._step();
+    assert(game.state === "GAME OVER", "state " + game.state);
+  });
+
+  t("self collision -> GAME OVER", function () {
+    game._resetBoard();
+    game.state = "PAUSED";
+    game.snake = [
+      { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 },
+      { x: 5, y: 6 }, { x: 4, y: 6 }, { x: 4, y: 5 }, { x: 4, y: 4 }
+    ];
+    game.dir = NSG.DIRS.LEFT;
+    game._step();
+    assert(game.state === "GAME OVER", "state " + game.state);
+  });
+  t("tail cell does not count as collision", function () {
+    game._resetBoard();
+    game.state = "PAUSED";
+    // head moves into the current tail cell, which is vacated this tick
+    game.snake = [{ x: 5, y: 5 }, { x: 6, y: 5 }];
+    game.food = { x: 0, y: 0 }; // keep food out of the way (deterministic)
+    game.dir = NSG.DIRS.RIGHT;
+    game._step();
+    assert(game.state !== "GAME OVER", "tail move-away flagged as collision");
+  });
+
+  t("pause blocks stepping via toggle", function () {
+    game._resetBoard();
+    game.state = "PLAYING";
+    game.togglePause();
+    assert(game.state === "PAUSED", "not paused");
+    game.togglePause();
+    assert(game.state === "PLAYING", "not resumed");
+  });
+
+  t("high score persisted to localStorage", function () {
+    game._resetBoard();
+    game.state = "PAUSED";
+    game.score = 10;
+    game._gameOver();
+    var stored = parseInt(localStorage.getItem("nokiaSnakeHighScore") || "0", 10);
+    assert(stored >= 10, "stored " + stored);
+    assert(game.high >= 10, "high " + game.high);
+  });
+
+  t("restart resets score and resumes", function () {
+    game.restart();
+    assert(game.state === "PLAYING", "state " + game.state);
+    assert(game.score === 0 && game.snake.length === 3, "not reset");
+  });
+
+  /* ---------- camera failure fallback (async, no crash) ---------- */
+  var asyncTest = (async function () {
+    var fakeVideo = document.createElement("video");
+    var fakeCanvas = document.createElement("canvas");
+    var notices = [];
+    var fakeGame = { setTurbo: function () {}, togglePause: function () {}, state: "READY" };
+
+    var desc = Object.getOwnPropertyDescriptor(navigator.mediaDevices, "getUserMedia");
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      configurable: true,
+      value: function () { return Promise.reject(new Error("NotAllowedError")); }
+    });
+
+    try {
+      var gc = new NSG.GestureController({
+        video: fakeVideo, canvas: fakeCanvas, game: fakeGame,
+        ui: { onNotice: function (m, k) { notices.push({ m: m, k: k }); } }
+      });
+      await gc.enable();
+      var ok = notices.length === 1 &&
+               notices[0].m === "Camera unavailable — Keyboard controls enabled" &&
+               notices[0].k === "error";
+      results.push((ok ? "PASS" : "FAIL") + " camera denied -> fallback notice (" +
+        JSON.stringify(notices) + ")");
+    } catch (e) {
+      results.push("FAIL camera denied -> threw " + e.message);
+    } finally {
+      try {
+        if (desc) Object.defineProperty(navigator.mediaDevices, "getUserMedia", desc);
+        else delete navigator.mediaDevices.getUserMedia;
+      } catch (e2) { /* ignore */ }
+    }
+
+    // render results
+    var out = document.getElementById("out");
+    out.innerHTML = results.map(function (r) {
+      var cls = r.indexOf("PASS") === 0 ? "pass" : "fail";
+      return '<span class="' + cls + '">' + r + "</span>";
+    }).join("\n");
+    window.__results = results;
+    window.__done = true;
+  })();
+
+  window.__results = results;
+})();
+</script>
+</body>
+</html>

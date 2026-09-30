@@ -1,241 +1,173 @@
 # 🐍 Nokia Snake — Gesture AI
 
-A modern reimagining of the classic Nokia Snake game, controlled in real time with your **hand gestures** through a webcam. Built with Python, Pygame, OpenCV and MediaPipe.
+A modern reimagining of the classic Nokia Snake game, controlled in real time with your **hand gestures** through a webcam — available in two editions:
 
-> **Note:** This is a desktop Python application. The actual Pygame/OpenCV/MediaPipe game runs locally because Vercel does not execute the Python desktop application or provide direct webcam access to it. The repository also contains a static landing page (`web/`) that is deployed separately.
+| | Desktop edition | Browser edition |
+|---|---|---|
+| **Stack** | Python · Pygame · OpenCV · MediaPipe | HTML · CSS · JavaScript · Canvas · MediaPipe Tasks Vision |
+| **Runs in** | Your desktop (local window) | Any modern browser (deployed on Vercel) |
+| **Hand tracking** | MediaPipe Python | MediaPipe Tasks Vision (WASM, in-browser) |
+| **Webcam** | `cv2.VideoCapture` | `navigator.mediaDevices.getUserMedia()` |
+| **No Python needed?** | — | ✅ Fully client-side |
 
----
-
-## ✨ Features
-
-- **Gesture Control** — steer the snake with swipes, no keyboard required
-- **Real-Time Hand Tracking** — 21 hand landmarks detected live with MediaPipe
-- **Live Camera Feed** — mirrored selfie-style camera panel inside the game window
-- **Turbo Mode** — pinch to temporarily boost the snake's speed
-- **Classic Nokia Gameplay** — grid board, wall/self collision, food, levels
-- **High Score System** — persistent high score saved to disk
-- **Particle Effects** — burst animation when you eat food
-- **Graceful Degradation** — camera or MediaPipe failures never break the game; keyboard always works
-- **Performance Optimized** — camera capture + hand tracking run on a background thread, independent of the 60 FPS game loop
+> **Browser edition live:** https://nokia-snake-gesture-ai.vercel.app
+> The game itself loads at that URL — play immediately with the keyboard, then enable the camera for gesture control.
 
 ---
 
-## 🎮 Gesture Controls
+## 1. Desktop Python version
 
-| Gesture | Action |
-|---|---|
-| Swipe **←** (move hand left) | Snake moves **LEFT** |
-| Swipe **→** (move hand right) | Snake moves **RIGHT** |
-| Swipe **↑** (move hand up) | Snake moves **UP** |
-| Swipe **↓** (move hand down) | Snake moves **DOWN** |
-| **Pinch** (thumb + index) | **Turbo** — faster while held |
-| **Closed fist** | **Pause / resume** |
-| **Open palm** | **Restart** (only when game over) |
-
-Notes:
-
-- The camera feed is **mirrored** (selfie view), and gesture interpretation stays intuitive — moving your hand to your right always moves the snake right.
-- Illegal 180° turns are rejected (e.g. moving RIGHT, a LEFT swipe is ignored).
-- Swipes use a cooldown/debounce so one gesture never triggers multiple turns.
-- Turbo only applies while the pinch is held.
-
----
-
-## ⌨️ Keyboard Controls
-
-| Key | Action |
-|---|---|
-| `W A S D` / `Arrow keys` | Move |
-| `Space` | Pause / resume |
-| `R` | Restart |
-| `Esc` | Quit |
-
-Keyboard controls are always available as a fallback, even when the camera or hand tracking is unavailable.
-
----
-
-## 🏗 Architecture
-
-```
-main.py                 Application entry point: window, main loop,
-                        event handling, gesture → game input routing
-
-core/
-  game.py               Snake logic: movement, collision, food, levels,
-                        speed/turbo, overlays, rendering
-  highscore.py          Persistent high score (highscore.dat)
-  particles.py          Particle explosion effects
-
-ui/
-  hud.py                Full HUD: header, camera panel, status panel,
-                        gesture guide, footer
-  components.py         Reusable rounded panel / progress bar widgets
-  menu.py               Menu/title rendering
-
-vision/
-  hand_tracker.py       Webcam capture + MediaPipe hand tracking on a
-                        background thread, swipe/pinch/fist/palm
-                        detection with debounce
-
-web/                    Static landing page (deployed on Vercel)
-```
-
-**Threading model:** the game loop runs at 60 FPS and never blocks. Camera capture, frame decoding and MediaPipe inference run in a worker thread that publishes the latest gesture result through a thread-safe reader (`HandTracker.get_result()`).
-
----
-
-## 🛠 Technologies
-
-| Technology | Role |
-|---|---|
-| **Python 3.11** | Runtime |
-| **Pygame** | Game window, rendering, input |
-| **OpenCV** | Webcam capture, image processing |
-| **MediaPipe** | Real-time hand landmark detection |
-| **NumPy** | Numerical operations on frames |
-
----
-
-## 📦 Installation
-
-Requirements: **Python 3.11** and a webcam.
+**Requires:** Python 3.11, a webcam.
 
 ```bash
 git clone https://github.com/deepsh3969/Nokia_Snake-V4.git
-cd Nokia_Snake-V4
+cd Nokia-Snake-V4
 
 python -m venv .venv
 .venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS / Linux
+# source .venv/bin/activate   # macOS/Linux
 
 python -m pip install -r requirements.txt
-```
 
----
-
-## ▶️ Running the Application
-
-```bash
 python main.py
 ```
 
-The window opens with the game board on the left and the live camera / gesture panel on the right. Show your hand to the camera to start controlling the snake — or use the keyboard.
+- Camera capture and hand tracking run on a **background thread** — the 60 FPS game loop never waits for the webcam.
+- If the camera or MediaPipe fails to start, the game switches to **keyboard control automatically** and shows a clear status in the HUD.
 
----
+## 2. Browser / Vercel version
 
-## 📷 Camera Troubleshooting
+Lives in [`web/`](web/). Pure static site — **no Python, no Pygame, no OpenCV**:
 
-| Symptom | What to try |
+- `web/index.html` — page structure
+- `web/style.css` — light, Nokia-inspired responsive UI
+- `web/script.js` — Canvas snake game + webcam gesture engine (MediaPipe Tasks Vision loaded on demand from CDN)
+
+### Run the web version locally
+
+```bash
+python -m http.server 8000 --directory web
+```
+
+Open **http://localhost:8000** — the Snake game loads directly.
+
+> Webcam access works on `localhost` (secure context) and on HTTPS in production. Vercel serves HTTPS automatically.
+
+## 3. Keyboard controls (both editions)
+
+| Key | Action |
 |---|---|
-| Panel shows **"Camera unavailable"** | Close other apps using the camera (Zoom, Teams, OBS, Camera app) and restart the game |
-| Panel shows **"No signal"** | Check the **physical privacy shutter** or the laptop's camera function key (on Lenovo: `Fn` + camera key), then restart the game |
-| Wrong camera is picked | The app auto-probes camera indexes `0`, `1`, `2` — plug/unplug external webcams and relaunch |
-| Black image in the Windows Camera app | The issue is at the OS/hardware level, not in this project — update the camera driver in Device Manager |
-| Slow, choppy feed | Close GPU-heavy applications; the app processes frames at 640×480 and tracks at up to 25 Hz |
+| `↑` `↓` `←` `→` | Steer |
+| `W` `A` `S` `D` | Steer |
+| `SPACE` | Pause / resume |
+| `ENTER` | Start / restart |
 
-If the camera cannot be used at all, the game still runs fully with keyboard controls.
+180° reversals (e.g. moving right → immediately left) are rejected, and quick double-turns are queued safely.
 
----
+## 4. Gesture controls (camera)
 
-## 🖐 MediaPipe Troubleshooting
+Click **ENABLE CAMERA**, allow webcam permission, then:
 
-| Symptom | What to try |
+| Gesture | Action |
 |---|---|
-| **"Hand tracking unavailable"** | Reinstall: `python -m pip install --force-reinstall mediapipe==0.10.21` |
-| Import error on `mediapipe` | Confirm Python 3.11: `python --version` (MediaPipe wheels must match your Python version) |
-| Tracking is jittery | Improve lighting, keep your hand 30–60 cm from the camera, use a plain background |
-| False swipes | Increase distance from the camera; swipe deliberately — a 0.45 s cooldown is applied |
+| 👆 Swipe up / down / left / right | Steer the snake |
+| 🖐 Open palm (hold ~0.2 s) | Pause / resume |
+| 🤏 Pinch (hold) | Turbo — temporarily doubles the speed |
 
-Keyboard controls remain active whenever hand tracking is unavailable.
+- The camera view is **mirrored** (selfie style); gesture directions follow your mirrored movement, so swiping your hand right moves the snake right.
+- **Debounce:** one hand movement triggers exactly one turn (cooldown ≈ 450 ms), and reversal of the current direction is blocked.
+- Landmarks are drawn live on an overlay canvas above the video.
 
----
+## 5. Camera permissions
 
-## 📂 Project Structure
+- **Desktop:** allow camera access for your OS / terminal. Windows: *Settings → Privacy → Camera*.
+- **Browser:** the site must be served over **HTTPS** (Vercel provides this) or `localhost`. Click **ENABLE CAMERA** and accept the permission prompt.
+- If permission is denied or MediaPipe cannot load, the page shows
+  **"Camera unavailable — Keyboard controls enabled"**
+  and the game keeps working with the keyboard. Nothing crashes.
+
+## 6. Local web testing
+
+```bash
+# serve the site
+python -m http.server 8000 --directory web
+# serve the repo root (needed for the automated test page)
+python -m http.server 8001 --directory .
+```
+
+Automated browser tests (headless Chrome, fake webcam):
+
+```bash
+node tests/run_cdp.mjs
+```
+
+This verifies page/CSS/JS loading, keyboard input, movement, 180° rejection, pause/resume, collision, restart, localStorage high score, camera startup, MediaPipe hand-landmarker initialisation, camera-denial fallback, and that the console stays error-free. The pure-logic suite in `tests/web_selftest.html` covers the swipe detector, pinch/palm pose helpers and the full game rules.
+
+## 7. Vercel deployment
+
+Two supported setups — both serve the game at `/` with **no 404s**:
+
+**A. Root directory = `web`** (recommended for Git-integrated projects)
+
+- Framework Preset: `Other`
+- Build Command: *(empty)*
+- Output Directory: `.`
+- Root Directory: `web`
+
+`web/vercel.json` is already present.
+
+**B. Root directory = repository root**
+
+A root-level `vercel.json` rewrites `/`, `/style.css` and `/script.js` into `web/`, so even a root deployment serves the game.
+
+CLI deployment (what this repo uses):
+
+```bash
+cd web
+vercel --prod
+```
+
+## 8. GitHub deployment
+
+```bash
+git status
+git remote -v                       # verify origin first
+git add .
+git commit -m "Create browser-based Nokia Snake Gesture AI"
+git push origin main
+```
+
+## 9. Project structure
 
 ```
-Nokia_Snake-V4/
-│
-├── main.py
-├── README.md
+Nokia-Snake-V4/
+├── main.py                 # desktop entry point
 ├── requirements.txt
-├── .gitignore
-├── vercel.json
-│
+├── README.md
+├── core/                   # snake logic, food, collisions, particles, highscore
+├── ui/                     # Pygame HUD, panels, menu
+├── vision/                 # OpenCV capture + MediaPipe hand tracking (threaded)
 ├── assets/
-│   └── sounds/
-│
-├── core/
-│   ├── game.py
-│   ├── highscore.py
-│   ├── particles.py
-│   └── __init__.py
-│
-├── ui/
-│   ├── components.py
-│   ├── hud.py
-│   ├── menu.py
-│   └── __init__.py
-│
-├── vision/
-│   ├── hand_tracker.py
-│   └── __init__.py
-│
-└── web/                  # Static landing page (Vercel)
-    ├── index.html
-    ├── style.css
-    └── script.js
+├── web/
+│   ├── index.html          # browser edition page
+│   ├── style.css           # responsive light UI
+│   ├── script.js           # Canvas game + gesture engine
+│   └── vercel.json         # static config (root-directory = web)
+├── tests/
+│   ├── web_selftest.html   # pure-logic test page
+│   └── run_cdp.mjs         # headless-Chrome end-to-end runner
+├── vercel.json             # root-deployment rewrites -> web/
+└── .gitignore
 ```
 
 ---
 
-## ⚡ Performance Notes
+## Troubleshooting
 
-- Camera capture and MediaPipe inference run on a **dedicated background thread** — the 60 FPS game loop never waits on the webcam.
-- Frames are captured at **640×480** and downscaled before being handed to Pygame.
-- Hand tracking runs at a capped **~25 Hz**, which is more than sufficient for gesture input.
-- Only one hand is tracked (`max_num_hands=1`) with the lightweight model (`model_complexity=0`).
-- The camera panel reports its real FPS next to the game FPS in the header.
+- **Camera unavailable (desktop):** close other apps using the webcam, check the privacy shutter / `Fn` camera key, and Windows camera permissions. The game continues with the keyboard.
+- **Camera unavailable (browser):** confirm the URL is HTTPS or `localhost`, check the browser's camera permission (lock icon in the address bar), and close other apps holding the webcam.
+- **Hand tracking inactive:** ensure your hand is well lit and fully inside the camera panel; landmark overlay appears when a hand is found.
 
----
+## License
 
-## 🔮 Future Improvements
-
-- Multiple simultaneous hand gestures
-- Configurable sensitivity / cooldown settings from an in-game options menu
-- Sound effects and music (`assets/sounds/`)
-- Online leaderboard
-- Mobile/web port of the game itself (separate from this desktop build)
-- Alternate control schemes (head tracking, face direction)
-
----
-
-## 📸 Screenshots
-
-> Screenshots will be added after a run on a machine with a working webcam.
-
-- **Gameplay screenshot** — *coming soon*
-- **Camera/gesture screenshot** — *coming soon*
-- **Game-over screenshot** — *coming soon*
-
----
-
-## 🌐 Deployment
-
-Two independent parts:
-
-1. **Desktop game** — runs locally with `python main.py`. It is *not* deployed to Vercel (Vercel cannot run Pygame or access a webcam).
-2. **Landing page** (`web/`) — static HTML/CSS/JS, deployed on Vercel with `web/` as the root directory.
-
----
-
-## 📄 License
-
-MIT License — free to use, modify and distribute.
-
----
-
-## 👤 Author
-
-**deepsh3969** — [github.com/deepsh3969](https://github.com/deepsh3969)
-
-Built with Python + Computer Vision.
+MIT — free to use, modify and share.
