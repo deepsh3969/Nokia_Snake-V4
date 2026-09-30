@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Nokia Snake Gesture AI — classic Snake reimagined with real-time computer vision. Control the snake with hand gestures via webcam." />
+  <title>Nokia Snake — Gesture AI</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ============ NAV ============ -->
+  <header class="nav">
+    <div class="container nav__inner">
+      <a class="nav__logo" href="#top">
+        <span class="nav__dot"></span>
+        NOKIA&nbsp;SNAKE&nbsp;<em>AI</em>
+      </a>
+      <nav class="nav__links" id="navLinks">
+        <a href="#features">Features</a>
+        <a href="#gestures">Gestures</a>
+        <a href="#tech">Technology</a>
+        <a href="#how">How it works</a>
+        <a href="#install">Install</a>
+      </nav>
+      <button class="nav__toggle" id="navToggle" aria-label="Open menu">☰</button>
+      <a class="btn btn--sm" href="https://github.com/deepsh3969/Nokia_Snake-V4" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </header>
+
+  <!-- ============ HERO ============ -->
+  <section class="hero" id="top">
+    <div class="container hero__inner">
+      <div class="hero__text">
+        <p class="eyebrow">PYTHON · OPENCV · MEDIAPIPE</p>
+        <h1 class="hero__title">
+          NOKIA SNAKE<br />
+          <span class="accent">GESTURE AI</span>
+        </h1>
+        <p class="hero__sub">
+          Classic Snake reimagined with real-time computer vision.
+        </p>
+        <div class="hero__actions">
+          <a class="btn" href="https://github.com/deepsh3969/Nokia_Snake-V4" target="_blank" rel="noopener">View on GitHub</a>
+          <a class="btn btn--ghost" href="#install">Run Locally</a>
+        </div>
+        <ul class="hero__stats">
+          <li><strong>60</strong><span>FPS game loop</span></li>
+          <li><strong>21</strong><span>hand landmarks</span></li>
+          <li><strong>7</strong><span>gestures</span></li>
+          <li><strong>0</strong><span>controllers needed</span></li>
+        </ul>
+      </div>
+
+      <div class="hero__art" aria-hidden="true">
+        <div class="phone">
+          <div class="phone__screen">
+            <div class="phone__bar">
+              <span class="phone__score">SCORE 040</span>
+              <span class="phone__hi">HI 120</span>
+            </div>
+            <div class="grid" id="heroGrid"></div>
+            <div class="phone__label">NOKIA 3310</div>
+          </div>
+          <div class="phone__keys">
+            <span></span><span class="k-up">▲</span><span></span>
+            <span class="k-l">◀</span><span class="k-ok">SELECT</span><span class="k-r">▶</span>
+            <span></span><span class="k-d">▼</span><span></span>
+          </div>
+        </div>
+        <div class="hand" aria-hidden="true">
+          <svg viewBox="0 0 100 120" width="120" height="144">
+            <g stroke="#9bbc0f" stroke-width="4" stroke-linecap="round" fill="none">
+              <path d="M30 115 L30 70" />
+              <path d="M30 70 L30 35" />
+              <path d="M45 72 L45 25" />
+              <path d="M60 74 L60 30" />
+              <path d="M74 78 L74 42" />
+              <path d="M30 88 L14 66" />
+              <path d="M30 70 L45 72 L60 74 L74 78" />
+            </g>
+            <g fill="#d7ff3c">
+              <circle cx="30" cy="35" r="5" />
+              <circle cx="45" cy="25" r="5" />
+              <circle cx="60" cy="30" r="5" />
+              <circle cx="74" cy="42" r="5" />
+              <circle cx="14" cy="66" r="5" />
+              <circle cx="30" cy="70" r="5" />
+              <circle cx="45" cy="72" r="5" />
+              <circle cx="60" cy="74" r="5" />
+              <circle cx="74" cy="78" r="5" />
+            </g>
+          </svg>
+          <div class="hand__tag">→ SWIPE RIGHT</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FEATURES ============ -->
+  <section class="section" id="features">
+    <div class="container">
+      <p class="eyebrow">WHAT'S INSIDE</p>
+      <h2>Features</h2>
+      <div class="features">
+        <article class="card">
+          <div class="card__icon">✋</div>
+          <h3>Gesture Control</h3>
+          <p>Steer the snake with hand swipes — pinch for turbo, fist to pause, open palm to restart.</p>
+        </article>
+        <article class="card">
+          <div class="card__icon">🦴</div>
+          <h3>Real-Time Hand Tracking</h3>
+          <p>MediaPipe detects 21 hand landmarks on every frame at up to 25&nbsp;Hz with a lightweight ML model.</p>
+        </article>
+        <article class="card">
+          <div class="card__icon">🎥</div>
+          <h3>Live Camera Feed</h3>
+          <p>A mirrored selfie-style webcam panel with landmarks, detected gesture and tracking status.</p>
+        </article>
+        <article class="card">
+          <div class="card__icon">⚡</div>
+          <h3>Turbo Mode</h3>
+          <p>Hold a pinch to temporarily boost the snake's speed — release and it returns to a comfortable pace.</p>
+        </article>
+        <article class="card">
+          <div class="card__icon">🐍</div>
+          <h3>Classic Nokia Gameplay</h3>
+          <p>Grid board, wall and self collision, food spawning, levels that gradually speed up.</p>
+        </article>
+        <article class="card">
+          <div class="card__icon">🏆</div>
+          <h3>High Score System</h3>
+          <p>Your best run is persisted to disk and shown live in the HUD next to your current score.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ GESTURE GUIDE ============ -->
+  <section class="section section--alt" id="gestures">
+    <div class="container">
+      <p class="eyebrow">CONTROL SCHEME</p>
+      <h2>Gesture Guide</h2>
+      <div class="gestures">
+        <div class="gcard">
+          <div class="gcard__icon">←</div>
+          <h3>LEFT</h3>
+          <p>Swipe hand left</p>
+        </div>
+        <div class="gcard">
+          <div class="gcard__icon">→</div>
+          <h3>RIGHT</h3>
+          <p>Swipe hand right</p>
+        </div>
+        <div class="gcard">
+          <div class="gcard__icon">↑</div>
+          <h3>UP</h3>
+          <p>Swipe hand up</p>
+        </div>
+        <div class="gcard">
+          <div class="gcard__icon">↓</div>
+          <h3>DOWN</h3>
+          <p>Swipe hand down</p>
+        </div>
+        <div class="gcard">
+          <div class="gcard__icon">🤏</div>
+          <h3>PINCH</h3>
+          <p>Turbo (hold)</p>
+        </div>
+        <div class="gcard">
+          <div class="gcard__icon">✊</div>
+          <h3>FIST</h3>
+          <p>Pause / resume</p>
+        </div>
+        <div class="gcard">
+          <div class="gcard__icon">🖐</div>
+          <h3>OPEN PALM</h3>
+          <p>Restart (game over)</p>
+        </div>
+      </div>
+      <p class="note">
+        The camera view is mirrored for a natural selfie experience — gesture
+        interpretation stays intuitive, illegal 180° turns are rejected, and every
+        swipe has a debounce cooldown.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ TECHNOLOGY ============ -->
+  <section class="section" id="tech">
+    <div class="container">
+      <p class="eyebrow">BUILT WITH</p>
+      <h2>Technology</h2>
+      <div class="tech">
+        <div class="tech__item"><span class="tech__badge">PY</span><h3>Python</h3><p>3.11 runtime</p></div>
+        <div class="tech__item"><span class="tech__badge">PG</span><h3>Pygame</h3><p>Window &amp; rendering</p></div>
+        <div class="tech__item"><span class="tech__badge">CV</span><h3>OpenCV</h3><p>Webcam capture</p></div>
+        <div class="tech__item"><span class="tech__badge">MP</span><h3>MediaPipe</h3><p>Hand landmarks</p></div>
+        <div class="tech__item"><span class="tech__badge">NP</span><h3>NumPy</h3><p>Frame maths</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HOW IT WORKS ============ -->
+  <section class="section section--alt" id="how">
+    <div class="container">
+      <p class="eyebrow">PIPELINE</p>
+      <h2>How It Works</h2>
+      <ol class="pipeline">
+        <li><span class="pipeline__step">1</span><strong>Webcam</strong><em>Captures 640×480 frames</em></li>
+        <li class="pipeline__arrow">↓</li>
+        <li><span class="pipeline__step">2</span><strong>OpenCV</strong><em>Mirrors &amp; preprocesses</em></li>
+        <li class="pipeline__arrow">↓</li>
+        <li><span class="pipeline__step">3</span><strong>MediaPipe</strong><em>Detects 21 landmarks</em></li>
+        <li class="pipeline__arrow">↓</li>
+        <li><span class="pipeline__step">4</span><strong>Gesture Detection</strong><em>Swipe / pinch / fist / palm</em></li>
+        <li class="pipeline__arrow">↓</li>
+        <li><span class="pipeline__step">5</span><strong>Snake Control</strong><em>Debounced, no 180° turns</em></li>
+      </ol>
+      <p class="note">
+        Camera capture and hand tracking run on a background thread, so the
+        60&nbsp;FPS game loop never waits for the webcam. If the camera or
+        MediaPipe fails, the game switches to keyboard control automatically.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ INSTALL ============ -->
+  <section class="section" id="install">
+    <div class="container container--narrow">
+      <p class="eyebrow">GET STARTED</p>
+      <h2>Installation</h2>
+      <p class="lead">
+        Requires Python 3.11 and a webcam. The game runs locally on your machine.
+      </p>
+      <div class="code">
+        <div class="code__bar"><span></span><span></span><span></span><em>terminal</em></div>
+<pre><code><span class="c"># clone the repository</span>
+git clone https://github.com/deepsh3969/Nokia_Snake-V4.git
+<span class="c"># enter the project folder</span>
+cd Nokia_Snake-V4
+
+<span class="c"># create a virtual environment</span>
+python -m venv .venv
+.venv\Scripts\activate
+
+<span class="c"># install dependencies</span>
+python -m pip install -r requirements.txt
+
+<span class="c"># play</span>
+python main.py</code></pre>
+      </div>
+      <div class="kbd">
+        <div><h4>Keyboard fallback</h4><p><kbd>WASD</kbd>/<kbd>Arrows</kbd> move · <kbd>Space</kbd> pause · <kbd>R</kbd> restart · <kbd>Esc</kbd> quit</p></div>
+        <div><h4>Camera issues?</h4><p>The game shows “Camera unavailable” and keeps playing with the keyboard. Close other apps using the webcam and check your privacy shutter.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ GITHUB ============ -->
+  <section class="section section--alt" id="github">
+    <div class="container container--narrow github">
+      <h2>Open Source</h2>
+      <p class="lead">
+        The full source code — game engine, vision pipeline and this website —
+        is available on GitHub under the MIT license.
+      </p>
+      <a class="btn" href="https://github.com/deepsh3969/Nokia_Snake-V4" target="_blank" rel="noopener">View on GitHub</a>
+      <p class="note">This website is the project's static landing page. The Pygame game itself runs locally and is not deployed here.</p>
+    </div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="container footer__inner">
+      <p>Built with Python + Computer Vision</p>
+      <p class="footer__meta">Nokia Snake — Gesture AI · MIT License</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

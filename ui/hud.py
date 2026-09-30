@@ -1,550 +1,613 @@
 import pygame
 
+from ui.components import Panel
+
+
+DIRECTION_ARROWS = {
+    "UP": "↑",
+    "DOWN": "↓",
+    "LEFT": "←",
+    "RIGHT": "→"
+}
+
 
 class HUD:
 
     def __init__(self):
 
-        self.title_font = pygame.font.Font(
-            None,
-            32
+        self.title_font = pygame.font.Font(None, 36)
+        self.section_font = pygame.font.Font(None, 23)
+        self.font = pygame.font.Font(None, 20)
+        self.small = pygame.font.Font(None, 17)
+        self.value_font = pygame.font.Font(None, 30)
+
+        # Symbol font (arrows / bullets render correctly here)
+
+        self.symbol_font = pygame.font.SysFont(
+            "segoeui,dejavusans,arial",
+            15
         )
 
-        self.font = pygame.font.Font(
-            None,
-            21
-        )
+        # Right column layout
 
-        self.small = pygame.font.Font(
-            None,
-            17
-        )
+        self.camera_rect = (595, 78, 480, 340)
+        self.status_rect = (595, 426, 480, 116)
+        self.guide_rect = (595, 550, 480, 196)
 
-        self.large = pygame.font.Font(
-            None,
-            27
-        )
+        # Bottom strip (left column only)
+
+        self.footer_rect = (25, 660, 550, 90)
 
     # =====================================================
     # TEXT
     # =====================================================
 
     def draw_text(
-
         self,
         screen,
         text,
         x,
         y,
         size=20,
-        bright=False
+        bright=False,
+        color=None
     ):
 
-        font = pygame.font.Font(
-            None,
-            size
-        )
+        if color is None:
 
-        color = (
-
-            (215, 255, 60)
-            if bright
-            else
-            (225, 240, 190)
-        )
-
-        surface = font.render(
-
-            text,
-
-            True,
-
-            color
-        )
-
-        screen.blit(
-
-            surface,
-
-            (
-                x,
-                y
+            color = (
+                (215, 255, 60)
+                if bright
+                else (225, 240, 190)
             )
-        )
+
+        font = pygame.font.Font(None, size)
+
+        surface = font.render(text, True, color)
+
+        screen.blit(surface, (x, y))
+
+        return surface
+
+    def draw_right(self, screen, text, right, y, size=20, color=None):
+
+        font = pygame.font.Font(None, size)
+
+        surface = font.render(text, True, color or (225, 240, 190))
+
+        screen.blit(surface, (right - surface.get_width(), y))
+
+    def draw_mixed(
+        self,
+        screen,
+        x,
+        y,
+        segments,
+        size=19,
+        color=(225, 240, 190),
+        gap=4
+    ):
+
+        cursor = x
+
+        for text, is_symbol in segments:
+
+            if is_symbol:
+
+                font = self.symbol_font
+
+                dy = y - 4
+
+            else:
+
+                font = pygame.font.Font(None, size)
+
+                dy = y
+
+            surface = font.render(text, True, color)
+
+            screen.blit(surface, (cursor, dy))
+
+            cursor += surface.get_width() + gap
+
+        return cursor
+
+    def measure_mixed(self, segments, size=19, gap=4):
+
+        total = 0
+
+        for text, is_symbol in segments:
+
+            font = (
+                self.symbol_font
+                if is_symbol
+                else pygame.font.Font(None, size)
+            )
+
+            total += font.size(text)[0] + gap
+
+        return total - gap if segments else 0
 
     # =====================================================
     # COMPLETE HUD
     # =====================================================
 
-    def draw(
+    def draw(self, screen, game, gesture, game_fps=0):
 
-        self,
-        screen,
-        game,
-        gesture
-    ):
+        self.draw_header(screen, game, gesture, game_fps)
 
-        self.draw_header(
-            screen,
-            game
-        )
+        game.draw(screen)
 
-        game.draw(
-            screen
-        )
+        self.draw_camera(screen, gesture)
 
-        self.draw_camera(
-            screen,
-            gesture
-        )
+        self.draw_status(screen, game, gesture, game_fps)
 
-        self.draw_controls(
-            screen
-        )
+        self.draw_guide(screen)
 
-        self.draw_status(
-            screen,
-            game,
-            gesture
-        )
-
-        self.draw_footer(
-            screen,
-            game
-        )
+        self.draw_footer(screen, game)
 
     # =====================================================
     # HEADER
     # =====================================================
 
-    def draw_header(
-
-        self,
-        screen,
-        game
-    ):
+    def draw_header(self, screen, game, gesture, game_fps):
 
         self.draw_text(
-
             screen,
-
-            "NOKIA SNAKE",
-
+            "NOKIA SNAKE AI",
             25,
-
-            25,
-
-            32,
-
+            20,
+            36,
             True
         )
 
         self.draw_text(
-
             screen,
-
-            f"SCORE  {game.score}",
-
-            275,
-
-            31,
-
-            21
+            "GESTURE EDITION",
+            27,
+            54,
+            17,
+            False,
+            (120, 150, 70)
         )
 
-        self.draw_text(
+        status = gesture.get("status")
 
+        tracking = gesture.get("tracking", False)
+
+        if status == "CAMERA_UNAVAILABLE":
+
+            dot = "X"
+            label = "CAMERA OFF"
+            color = (220, 90, 60)
+
+        elif status == "TRACKING_UNAVAILABLE":
+
+            dot = "!"
+            label = "TRACKING UNAVAILABLE"
+            color = (230, 180, 60)
+
+        elif tracking:
+
+            dot = "●"
+            label = "HAND TRACKED"
+            color = (215, 255, 60)
+
+        else:
+
+            dot = "○"
+            label = "NO HAND"
+            color = (150, 175, 90)
+
+        segments = [(dot, True), (label, False)]
+
+        width = self.measure_mixed(segments, 20)
+
+        self.draw_mixed(
             screen,
-
-            f"LEVEL  {game.level}",
-
-            410,
-
-            31,
-
-            21
+            1075 - width,
+            24,
+            segments,
+            20,
+            color
         )
 
-        self.draw_text(
-
+        self.draw_right(
             screen,
-
-            "GESTURE AI",
-
-            820,
-
-            31,
-
-            21,
-
-            True
+            f"GAME {game_fps:3.0f} FPS   CAM {gesture.get('fps', 0):3.0f} FPS",
+            1075,
+            52,
+            17,
+            (120, 150, 70)
         )
 
     # =====================================================
-    # CAMERA
+    # CAMERA PANEL
     # =====================================================
 
-    def draw_camera(
+    def draw_camera(self, screen, gesture):
 
-        self,
-        screen,
-        gesture
-    ):
+        x, y, w, h = self.camera_rect
 
-        x = 600
+        status = gesture.get("status")
 
-        y = 80
+        frame = gesture.get("preview_rgb")
 
-        width = 470
-
-        height = 300
-
-        frame = gesture.get(
-            "preview_rgb"
+        border = (
+            (155, 188, 15)
+            if status == "OK"
+            else (200, 120, 50)
         )
 
-        pygame.draw.rect(
-
+        Panel((x, y, w, h)).draw(
             screen,
-
-            (8, 15, 5),
-
-            (
-                x,
-                y,
-                width,
-                height
-            ),
-
-            border_radius=12
+            border=border,
+            background=(6, 11, 4)
         )
 
-        if frame is not None:
+        inner = (x + 3, y + 3, w - 6, h - 6)
+
+        if frame is not None and status == "OK":
 
             try:
 
-                surface = (
-                    pygame.surfarray.make_surface(
-                        frame.swapaxes(
-                            0,
-                            1
-                        )
-                    )
+                surface = pygame.surfarray.make_surface(
+                    frame.swapaxes(0, 1)
                 )
 
-                surface = (
-                    pygame.transform.smoothscale(
-
-                        surface,
-
-                        (
-                            width,
-                            height
-                        )
-                    )
-                )
-
-                screen.blit(
-
+                surface = pygame.transform.smoothscale(
                     surface,
-
-                    (
-                        x,
-                        y
-                    )
+                    (inner[2], inner[3])
                 )
 
-            except Exception as error:
+                screen.blit(surface, (inner[0], inner[1]))
 
-                print(
-                    "Camera rendering error:",
-                    error
+            except Exception:
+
+                frame = None
+
+        if frame is None or status != "OK":
+
+            message = gesture.get(
+                "message",
+                "Camera unavailable"
+            )
+
+            if status == "STARTING":
+
+                message = "Starting camera..."
+
+            elif status == "OK":
+
+                message = "Loading camera..."
+
+            line_a = self.section_font.render(
+                message,
+                True,
+                (230, 180, 60) if status != "STARTING" else (215, 255, 60)
+            )
+
+            line_b = self.small.render(
+                "Keyboard controls still work",
+                True,
+                (150, 175, 90)
+            )
+
+            screen.blit(
+                line_a,
+                (
+                    x + (w - line_a.get_width()) // 2,
+                    y + h // 2 - 30
                 )
+            )
+
+            screen.blit(
+                line_b,
+                (
+                    x + (w - line_b.get_width()) // 2,
+                    y + h // 2 + 6
+                )
+            )
+
+        # Live badge
+
+        if status == "OK":
+
+            dot = "●"
+            badge = "LIVE"
+            badge_color = (215, 255, 60)
+
+        elif status == "STARTING":
+
+            dot = "○"
+            badge = "STARTING"
+            badge_color = (230, 180, 60)
 
         else:
 
-            self.draw_text(
+            dot = "○"
+            badge = "NO SIGNAL"
+            badge_color = (220, 90, 60)
 
-                screen,
+        badge_bg = pygame.Surface((140, 26), pygame.SRCALPHA)
 
-                "CAMERA INITIALIZING...",
+        badge_bg.fill((4, 8, 3, 200))
 
-                x + 135,
+        screen.blit(badge_bg, (x + 12, y + 12))
 
-                y + 140,
-
-                20,
-
-                True
-            )
-
-        pygame.draw.rect(
-
+        self.draw_mixed(
             screen,
-
-            (155, 188, 15),
-
-            (
-                x,
-                y,
-                width,
-                height
-            ),
-
-            3,
-
-            border_radius=12
+            x + 22,
+            y + 16,
+            [(dot, True), (badge, False)],
+            18,
+            badge_color
         )
 
-        # Status
+        # Panel title
 
-        if gesture.get(
-            "tracking"
-        ):
+        self.draw_right(
+            screen,
+            "CAMERA / GESTURE",
+            x + w - 14,
+            y + 17,
+            18,
+            (120, 150, 70)
+        )
 
-            status = "● HAND TRACKING"
+    # =====================================================
+    # STATUS PANEL
+    # =====================================================
 
-        else:
+    def draw_status(self, screen, game, gesture, game_fps):
 
-            status = "○ SHOW HAND"
+        x, y, w, h = self.status_rect
+
+        Panel((x, y, w, h)).draw(screen)
 
         self.draw_text(
-
             screen,
-
-            status,
-
-            x + 15,
-
-            y + 15,
-
-            17,
-
+            "STATUS",
+            x + 16,
+            y + 12,
+            20,
             True
         )
 
-    # =====================================================
-    # CONTROLS
-    # =====================================================
+        # Current gesture
 
-    def draw_controls(
-
-        self,
-        screen
-    ):
-
-        x = 600
-
-        y = 405
-
-        self.draw_text(
-
-            screen,
-
-            "GESTURE TEMPLATE",
-
-            x,
-
-            y,
-
-            24,
-
-            True
-        )
-
-        controls = [
-
-            ("←", "SWIPE LEFT"),
-
-            ("→", "SWIPE RIGHT"),
-
-            ("↑", "SWIPE UP"),
-
-            ("↓", "SWIPE DOWN"),
-
-            ("🤏", "PINCH  •  TURBO"),
-
-            ("✊", "FIST  •  PAUSE"),
-
-            ("✋", "OPEN PALM  •  RESTART")
-        ]
-
-        for i, (
-            symbol,
-            label
-        ) in enumerate(
-            controls
-        ):
-
-            yy = (
-                y
-                + 38
-                + i * 29
-            )
-
-            self.draw_text(
-
-                screen,
-
-                symbol,
-
-                x,
-
-                yy,
-
-                20,
-
-                True
-            )
-
-            self.draw_text(
-
-                screen,
-
-                label,
-
-                x + 38,
-
-                yy + 1,
-
-                16
-            )
-
-    # =====================================================
-    # STATUS
-    # =====================================================
-
-    def draw_status(
-
-        self,
-        screen,
-        game,
-        gesture
-    ):
-
-        x = 600
-
-        y = 640
-
-        swipe = gesture.get(
-            "swipe"
-        )
+        swipe = gesture.get("swipe")
 
         if swipe:
 
-            current = (
-                "MOVE "
-                + swipe
-            )
+            current = f"SWIPE {swipe}"
 
-        elif gesture.get(
-            "pinch"
-        ):
+        elif gesture.get("pinch"):
 
-            current = "TURBO"
+            current = "PINCH (TURBO)"
 
-        elif gesture.get(
-            "tracking"
-        ):
+        elif gesture.get("tracking"):
 
-            current = (
-                f"{gesture.get('fingers', 0)} "
-                "FINGERS"
-            )
+            current = f"{gesture.get('fingers', 0)} FINGERS"
+
+        elif gesture.get("status") != "OK":
+
+            current = gesture.get("message", "UNAVAILABLE")
 
         else:
 
-            current = "READY"
+            current = "NONE"
 
         self.draw_text(
-
             screen,
+            "Current Gesture:",
+            x + 16,
+            y + 40,
+            19,
+            False,
+            (150, 175, 90)
+        )
 
-            f"CURRENT: {current}",
-
-            x,
-
-            y,
-
-            21,
-
+        self.draw_text(
+            screen,
+            current,
+            x + 168,
+            y + 40,
+            19,
             True
         )
 
+        # Direction
+
+        direction = game.direction
+
         self.draw_text(
-
             screen,
-
-            f"CAMERA: {gesture.get('fps', 0):.0f} FPS",
-
-            x + 230,
-
-            y,
-
-            17
+            "Direction:",
+            x + 16,
+            y + 64,
+            19,
+            False,
+            (150, 175, 90)
         )
+
+        arrow = DIRECTION_ARROWS.get(direction, "")
+
+        self.draw_mixed(
+            screen,
+            x + 168,
+            y + 64,
+            [(arrow, True), (direction, False)],
+            19,
+            (215, 255, 60)
+        )
+
+        # Game status
+
+        if game.game_over:
+
+            state = "GAME OVER"
+
+            state_color = (220, 90, 60)
+
+        elif game.paused:
+
+            state = "PAUSED"
+
+            state_color = (230, 180, 60)
+
+        elif game.turbo:
+
+            state = "PLAYING (TURBO)"
+
+            state_color = (215, 255, 60)
+
+        else:
+
+            state = "PLAYING"
+
+            state_color = (215, 255, 60)
+
+        self.draw_text(
+            screen,
+            "Status:",
+            x + 16,
+            y + 88,
+            19,
+            False,
+            (150, 175, 90)
+        )
+
+        self.draw_text(
+            screen,
+            state,
+            x + 168,
+            y + 88,
+            19,
+            True,
+            state_color
+        )
+
+        # Turbo bar
+
+        if game.turbo:
+
+            self.draw_right(
+                screen,
+                "TURBO ACTIVE",
+                x + w - 16,
+                y + 88,
+                18,
+                (215, 255, 60)
+            )
+
+    # =====================================================
+    # GESTURE GUIDE
+    # =====================================================
+
+    def draw_guide(self, screen):
+
+        x, y, w, h = self.guide_rect
+
+        Panel((x, y, w, h)).draw(screen)
+
+        self.draw_text(
+            screen,
+            "GESTURE GUIDE",
+            x + 16,
+            y + 12,
+            20,
+            True
+        )
+
+        entries = [
+            ("←", "Swipe LEFT", "Move left"),
+            ("→", "Swipe RIGHT", "Move right"),
+            ("↑", "Swipe UP", "Move up"),
+            ("↓", "Swipe DOWN", "Move down"),
+            ("~", "PINCH", "Turbo (hold)"),
+            ("", "CLOSED FIST", "Pause / resume"),
+            ("", "OPEN PALM", "Restart (game over)")
+        ]
+
+        for i, (symbol, name, action) in enumerate(entries):
+
+            yy = y + 40 + i * 21
+
+            if symbol:
+
+                self.draw_mixed(
+                    screen,
+                    x + 20,
+                    yy,
+                    [(symbol, True)],
+                    17,
+                    (215, 255, 60)
+                )
+
+            self.draw_text(
+                screen,
+                name,
+                x + 48,
+                yy,
+                17,
+                False,
+                (225, 240, 190)
+            )
+
+            self.draw_text(
+                screen,
+                action,
+                x + 180,
+                yy,
+                17,
+                False,
+                (120, 150, 70)
+            )
 
     # =====================================================
     # FOOTER
     # =====================================================
 
-    def draw_footer(
+    def draw_footer(self, screen, game):
 
-        self,
-        screen,
-        game
-    ):
+        x, y, w, h = self.footer_rect
 
-        self.draw_text(
+        Panel((x, y, w, h)).draw(screen)
 
-            screen,
+        columns = [
+            ("SCORE", game.score, x + 16),
+            ("HIGH SCORE", game.high_score, x + 150),
+            ("LEVEL", game.level, x + 330)
+        ]
 
-            "WASD / ARROWS  •  MOVE",
+        for label, value, cx in columns:
 
-            25,
+            self.draw_text(
+                screen,
+                label,
+                cx,
+                y + 12,
+                16,
+                False,
+                (150, 175, 90)
+            )
 
-            705,
-
-            16
-        )
-
-        self.draw_text(
-
-            screen,
-
-            "SPACE  •  PAUSE",
-
-            250,
-
-            705,
-
-            16
-        )
-
-        self.draw_text(
-
-            screen,
-
-            "R  •  RESTART",
-
-            410,
-
-            705,
-
-            16
-        )
+            self.draw_text(
+                screen,
+                str(value),
+                cx,
+                y + 32,
+                28,
+                True
+            )
 
         self.draw_text(
-
             screen,
-
-            f"HIGH SCORE  {game.high_score}",
-
-            820,
-
-            705,
-
+            "WASD / ARROWS: MOVE   SPACE: PAUSE   R: RESTART   ESC: QUIT",
+            x + 16,
+            y + 68,
             16,
-
-            True
+            False,
+            (120, 150, 70)
         )

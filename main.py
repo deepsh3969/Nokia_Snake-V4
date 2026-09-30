@@ -3,7 +3,12 @@ import sys
 
 from core.game import SnakeGame
 from core.highscore import HighScore
-from vision.hand_tracker import HandTracker
+from vision.hand_tracker import (
+    HandTracker,
+    CameraError,
+    default_result,
+    STATUS_CAMERA_UNAVAILABLE
+)
 from ui.hud import HUD
 
 
@@ -14,16 +19,15 @@ FPS = 60
 
 def main():
 
-    print("\n==============================")
-    print("     NOKIA SNAKE V4")
-    print("   GESTURE AI EDITION")
-    print("==============================\n")
+    print(
+        "\nNOKIA SNAKE V4 - GESTURE AI\n"
+        "============================",
+        flush=True
+    )
 
     pygame.init()
 
-    screen = pygame.display.set_mode(
-        (WIDTH, HEIGHT)
-    )
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
     pygame.display.set_caption(
         "Nokia Snake V4 - Gesture AI"
@@ -33,33 +37,36 @@ def main():
 
     highscore = HighScore()
 
-    game = SnakeGame(
-        high_score=highscore.get()
-    )
+    game = SnakeGame(high_score=highscore.get())
 
     hud = HUD()
 
     # --------------------------------------------------
-    # CAMERA
+    # CAMERA (never fatal: keyboard always works)
     # --------------------------------------------------
 
     tracker = None
 
+    camera_status = default_result(
+        STATUS_CAMERA_UNAVAILABLE,
+        "Camera unavailable"
+    )
+
     try:
 
-        print("Opening webcam...")
+        tracker = HandTracker(camera_index=0)
 
-        tracker = HandTracker(
-            camera_index=0
-        )
+        print("Camera: started", flush=True)
 
-        print("Webcam started.")
+    except CameraError as error:
 
-    except Exception as e:
+        print(f"Camera: {error}", flush=True)
+        print("Keyboard controls active.", flush=True)
 
-        print("\nCamera could not start:")
-        print(e)
-        print("\nKeyboard controls will still work.\n")
+    except Exception as error:
+
+        print(f"Camera error: {error}", flush=True)
+        print("Keyboard controls active.", flush=True)
 
     running = True
 
@@ -67,8 +74,10 @@ def main():
 
         dt = clock.tick(FPS) / 1000.0
 
+        game_fps = clock.get_fps()
+
         # =================================================
-        # EVENTS
+        # EVENTS (keyboard fallback)
         # =================================================
 
         for event in pygame.event.get():
@@ -79,136 +88,73 @@ def main():
 
             elif event.type == pygame.KEYDOWN:
 
-                # ------------------------------
-                # QUIT
-                # ------------------------------
-
                 if event.key == pygame.K_ESCAPE:
 
                     running = False
 
-                # ------------------------------
-                # MOVEMENT
-                # ------------------------------
-
-                elif event.key in (
-                    pygame.K_UP,
-                    pygame.K_w
-                ):
+                elif event.key in (pygame.K_UP, pygame.K_w):
 
                     game.set_direction("UP")
 
-                elif event.key in (
-                    pygame.K_DOWN,
-                    pygame.K_s
-                ):
+                elif event.key in (pygame.K_DOWN, pygame.K_s):
 
                     game.set_direction("DOWN")
 
-                elif event.key in (
-                    pygame.K_LEFT,
-                    pygame.K_a
-                ):
+                elif event.key in (pygame.K_LEFT, pygame.K_a):
 
                     game.set_direction("LEFT")
 
-                elif event.key in (
-                    pygame.K_RIGHT,
-                    pygame.K_d
-                ):
+                elif event.key in (pygame.K_RIGHT, pygame.K_d):
 
                     game.set_direction("RIGHT")
-
-                # ------------------------------
-                # PAUSE
-                # ------------------------------
 
                 elif event.key == pygame.K_SPACE:
 
                     game.toggle_pause()
-
-                # ------------------------------
-                # RESTART
-                # ------------------------------
 
                 elif event.key == pygame.K_r:
 
                     game.restart()
 
         # =================================================
-        # CAMERA
+        # CAMERA / GESTURES (non-blocking)
         # =================================================
 
-        if tracker:
+        gesture = (
+            tracker.get_result()
+            if tracker
+            else camera_status
+        )
 
-            gesture = tracker.update()
-
-        else:
-
-            gesture = {
-                "tracking": False,
-                "swipe": None,
-                "pinch": False,
-                "fist_edge": False,
-                "open_edge": False,
-                "fingers": 0,
-                "confidence": 0,
-                "preview_rgb": None,
-                "fps": 0
-            }
-
-        # =================================================
-        # GESTURE MOVEMENT
-        # =================================================
+        # Swipe -> direction
 
         swipe = gesture.get("swipe")
 
         if swipe:
 
-            game.set_direction(
-                swipe
-            )
+            game.set_direction(swipe)
 
-        # =================================================
-        # PINCH = TURBO
-        # =================================================
+        # Pinch -> turbo (only while held)
 
-        game.turbo = gesture.get(
-            "pinch",
-            False
-        )
+        game.turbo = gesture.get("pinch", False)
 
-        # =================================================
-        # FIST = PAUSE
-        # =================================================
+        # Fist -> pause (edge triggered)
 
-        if gesture.get(
-            "fist_edge",
-            False
-        ):
+        if gesture.get("fist_edge", False):
 
             game.toggle_pause()
 
-        # =================================================
-        # OPEN PALM = RESTART
-        # =================================================
+        # Open palm -> restart (only when game over)
 
-        if gesture.get(
-            "open_edge",
-            False
-        ):
+        if gesture.get("open_edge", False) and game.game_over:
 
-            if game.game_over:
-
-                game.restart()
+            game.restart()
 
         # =================================================
         # GAME UPDATE
         # =================================================
 
-        game.update(
-            dt
-        )
+        game.update(dt)
 
         # =================================================
         # HIGH SCORE
@@ -216,23 +162,15 @@ def main():
 
         if game.score > highscore.get():
 
-            highscore.save(
-                game.score
-            )
+            highscore.save(game.score)
 
         # =================================================
         # DRAW
         # =================================================
 
-        screen.fill(
-            game.BLACK
-        )
+        screen.fill(game.BLACK)
 
-        hud.draw(
-            screen,
-            game,
-            gesture
-        )
+        hud.draw(screen, game, gesture, game_fps)
 
         pygame.display.flip()
 

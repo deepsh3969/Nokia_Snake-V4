@@ -1,8 +1,173 @@
-import cv2
-import mediapipe as mp
-import numpy as np
+import threading
 import time
 from collections import deque
+
+import cv2
+import numpy as np
+
+try:
+    import mediapipe as mp
+
+    MEDIAPIPE_AVAILABLE = True
+
+except Exception:
+
+    mp = None
+
+    MEDIAPIPE_AVAILABLE = False
+
+
+STATUS_STARTING = "STARTING"
+STATUS_OK = "OK"
+STATUS_CAMERA_UNAVAILABLE = "CAMERA_UNAVAILABLE"
+STATUS_TRACKING_UNAVAILABLE = "TRACKING_UNAVAILABLE"
+
+
+class CameraError(RuntimeError):
+    pass
+
+
+def default_result(
+    status=STATUS_STARTING,
+    message="Starting camera..."
+):
+
+    return {
+        "tracking": False,
+        "swipe": None,
+        "pinch": False,
+        "fist_edge": False,
+        "open_edge": False,
+        "fingers": 0,
+        "confidence": 0,
+        "preview_rgb": None,
+        "fps": 0.0,
+        "status": status,
+        "message": message
+    }
+
+
+class SwipeDetector:
+
+    def __init__(
+        self,
+        cooldown=0.45,
+        threshold=0.12,
+        min_points=7,
+        maxlen=10
+    ):
+
+        self.cooldown = cooldown
+        self.threshold = threshold
+        self.min_points = min_points
+
+        self.history = deque(maxlen=maxlen)
+
+        self.last_time = float("-inf")
+
+    def feed(self, x, y, now=None):
+
+        if now is None:
+
+            now = time.time()
+
+        self.history.append((x, y))
+
+        if len(self.history) < self.min_points:
+
+            return None
+
+        if now - self.last_time < self.cooldown:
+
+            return None
+
+        start = self.history[0]
+        end = self.history[-1]
+
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+
+        gesture = None
+
+        if abs(dx) > abs(dy):
+
+            if abs(dx) > self.threshold:
+
+                gesture = "RIGHT" if dx > 0 else "LEFT"
+
+        else:
+
+            if abs(dy) > self.threshold:
+
+                gesture = "DOWN" if dy > 0 else "UP"
+
+        if gesture:
+
+            self.history.clear()
+            self.last_time = now
+
+        return gesture
+
+    def clear(self):
+
+        self.history.clear()
+
+
+def open_camera(preferred_index=0):
+
+    candidates = []
+
+    for index in (preferred_index, 0, 1, 2):
+
+        if index not in candidates:
+
+            candidates.append(index)
+
+    backends = []
+
+    if hasattr(cv2, "CAP_DSHOW"):
+
+        backends.append(cv2.CAP_DSHOW)
+
+    backends.append(cv2.CAP_ANY)
+
+    errors = []
+
+    for index in candidates:
+
+        for backend in backends:
+
+            cap = cv2.VideoCapture(index, backend)
+
+            if cap.isOpened():
+
+                cap.set(
+                    cv2.CAP_PROP_FRAME_WIDTH,
+                    640
+                )
+
+                cap.set(
+                    cv2.CAP_PROP_FRAME_HEIGHT,
+                    480
+                )
+
+                cap.set(
+                    cv2.CAP_PROP_FPS,
+                    30
+                )
+
+                return cap, index, backend
+
+            cap.release()
+
+            errors.append(
+                f"index {index} backend {backend}"
+            )
+
+    raise CameraError(
+        "Camera unavailable. Tried: "
+        + ", ".join(errors)
+    )
 
 
 class HandTracker:
@@ -12,599 +177,493 @@ class HandTracker:
         camera_index=0
     ):
 
-        # =================================================
-        # CAMERA
-        # =================================================
-
-        self.cap = cv2.VideoCapture(
-            camera_index,
-            cv2.CAP_DSHOW
+        self.cap, self.camera_index, self.backend = (
+            open_camera(camera_index)
         )
 
-        if not self.cap.isOpened():
-
-            self.cap.release()
-
-            self.cap = cv2.VideoCapture(
-                camera_index
-            )
-
-        if not self.cap.isOpened():
-
-            raise RuntimeError(
-                "Could not open webcam."
-            )
-
-        self.cap.set(
-            cv2.CAP_PROP_FRAME_WIDTH,
-            640
-        )
-
-        self.cap.set(
-            cv2.CAP_PROP_FRAME_HEIGHT,
-            480
-        )
-
-        self.cap.set(
-            cv2.CAP_PROP_FPS,
-            30
-        )
-
-        # =================================================
+        # ------------------------------
         # MEDIAPIPE
-        # =================================================
+        # ------------------------------
 
-        self.mp_hands = (
-            mp.solutions.hands
-        )
+        self.tracking_available = False
 
-        self.mp_draw = (
-            mp.solutions.drawing_utils
-        )
+        self.hands = None
 
-        self.hands = self.mp_hands.Hands(
+        if MEDIAPIPE_AVAILABLE:
 
-            static_image_mode=False,
+            try:
 
-            max_num_hands=1,
+                self.hands = (
+                    mp.solutions.hands.Hands(
+                        static_image_mode=False,
+                        max_num_hands=1,
+                        model_complexity=0,
+                        min_detection_confidence=0.55,
+                        min_tracking_confidence=0.55
+                    )
+                )
 
-            model_complexity=0,
+                self.mp_hands = mp.solutions.hands
+                self.mp_draw = mp.solutions.drawing_utils
 
-            min_detection_confidence=0.55,
+                self.tracking_available = True
 
-            min_tracking_confidence=0.55
-        )
+            except Exception:
 
-        # =================================================
-        # MOTION HISTORY
-        # =================================================
+                self.hands = None
+                self.tracking_available = False
 
-        self.history = deque(
-            maxlen=10
-        )
+        # ------------------------------
+        # GESTURE STATE
+        # ------------------------------
 
-        self.last_swipe_time = 0
-
-        self.swipe_cooldown = 0.45
-
-        # =================================================
-        # EDGE STATES
-        # =================================================
-
-        self.last_pinch = False
+        self.swipe_detector = SwipeDetector()
 
         self.last_fist = False
-
         self.last_open = False
 
-        # =================================================
-        # FPS
-        # =================================================
+        self.last_toggle_time = 0.0
+        self.toggle_cooldown = 0.7
 
-        self.frame_count = 0
+        # ------------------------------
+        # THREAD STATE
+        # ------------------------------
 
-        self.fps = 0
+        self._lock = threading.Lock()
 
-        self.fps_timer = time.time()
+        self._result = default_result()
+
+        self._running = True
+
+        self._frame_count = 0
+        self._fps_window_start = time.time()
+        self._camera_fps = 0.0
+
+        self._started_at = time.time()
+
+        self._thread = threading.Thread(
+            target=self._worker,
+            name="hand-tracker",
+            daemon=True
+        )
+
+        self._thread.start()
 
     # =====================================================
-    # DISTANCE
+    # WORKER
+    # =====================================================
+
+    def _worker(self):
+
+        consecutive_failures = 0
+
+        got_frame = False
+
+        while self._running:
+
+            ok, frame = self.cap.read()
+
+            if not ok or frame is None:
+
+                consecutive_failures += 1
+
+                if consecutive_failures >= 8:
+
+                    self._publish(
+                        default_result(
+                            STATUS_CAMERA_UNAVAILABLE,
+                            "Camera unavailable"
+                        )
+                    )
+
+                time.sleep(0.05)
+
+                continue
+
+            consecutive_failures = 0
+
+            got_frame = True
+
+            now = time.time()
+
+            # --------------------------
+            # FPS
+            # --------------------------
+
+            self._frame_count += 1
+
+            elapsed = now - self._fps_window_start
+
+            if elapsed >= 1.0:
+
+                self._camera_fps = (
+                    self._frame_count / elapsed
+                )
+
+                self._frame_count = 0
+                self._fps_window_start = now
+
+            # --------------------------
+            # NO SIGNAL DETECTION
+            # (camera opens but stream is dead/too slow)
+            # --------------------------
+
+            if (
+                now - self._started_at > 6
+                and
+                self._camera_fps < 2
+            ):
+
+                preview = self._build_preview(
+                    frame,
+                    default_result(
+                        STATUS_CAMERA_UNAVAILABLE,
+                        "Camera unavailable (no signal)"
+                    )
+                )
+
+                self._publish({
+                    **default_result(
+                        STATUS_CAMERA_UNAVAILABLE,
+                        "Camera unavailable (no signal)"
+                    ),
+                    "preview_rgb": preview,
+                    "fps": self._camera_fps
+                })
+
+                time.sleep(0.2)
+
+                continue
+
+            # --------------------------
+            # MIRROR (selfie view)
+            # --------------------------
+
+            frame = cv2.flip(frame, 1)
+
+            # --------------------------
+            # MEDIAPIPE
+            # --------------------------
+
+            hand = None
+
+            if self.tracking_available:
+
+                try:
+
+                    rgb = cv2.cvtColor(
+                        frame,
+                        cv2.COLOR_BGR2RGB
+                    )
+
+                    processed = self.hands.process(rgb)
+
+                    if processed.multi_hand_landmarks:
+
+                        hand = (
+                            processed.multi_hand_landmarks[0]
+                        )
+
+                except Exception:
+
+                    hand = None
+
+            # --------------------------
+            # RESULT
+            # --------------------------
+
+            if not self.tracking_available:
+
+                result = default_result(
+                    STATUS_TRACKING_UNAVAILABLE,
+                    "Hand tracking unavailable"
+                )
+
+            else:
+
+                result = default_result(
+                    STATUS_OK,
+                    "Live camera feed"
+                )
+
+            result["fps"] = self._camera_fps
+
+            swipe = None
+            pinch = False
+            fist_edge = False
+            open_edge = False
+            fingers = 0
+            tracking = hand is not None
+
+            if hand is not None:
+
+                lm = hand.landmark
+
+                # --------------------------
+                # DRAW LANDMARKS
+                # --------------------------
+
+                try:
+
+                    self.mp_draw.draw_landmarks(
+
+                        frame,
+                        hand,
+                        self.mp_hands.HAND_CONNECTIONS,
+                        self.mp_draw.DrawingSpec(
+                            color=(155, 188, 15),
+                            thickness=2,
+                            circle_radius=3
+                        ),
+                        self.mp_draw.DrawingSpec(
+                            color=(215, 255, 60),
+                            thickness=2
+                        )
+                    )
+
+                except Exception:
+
+                    pass
+
+                # --------------------------
+                # SWIPE
+                # --------------------------
+
+                swipe = self.swipe_detector.feed(
+                    lm[9].x,
+                    lm[9].y,
+                    now
+                )
+
+                # --------------------------
+                # FINGERS
+                # --------------------------
+
+                fingers = self._count_fingers(lm)
+
+                # --------------------------
+                # PINCH (level: turbo while held)
+                # --------------------------
+
+                pinch = (
+                    self._distance(lm[4], lm[8]) < 0.055
+                )
+
+                # --------------------------
+                # FIST / PALM (edge + cooldown)
+                # --------------------------
+
+                fist = fingers <= 1 and not pinch
+                palm = fingers >= 4
+
+                if (
+                    fist
+                    and not self.last_fist
+                    and now - self.last_toggle_time >= self.toggle_cooldown
+                ):
+
+                    fist_edge = True
+                    self.last_toggle_time = now
+
+                if (
+                    palm
+                    and not self.last_open
+                    and now - self.last_toggle_time >= self.toggle_cooldown
+                ):
+
+                    open_edge = True
+                    self.last_toggle_time = now
+
+                self.last_fist = fist
+                self.last_open = palm
+
+            else:
+
+                self.swipe_detector.clear()
+                self.last_fist = False
+                self.last_open = False
+
+            result["tracking"] = tracking
+            result["swipe"] = swipe
+            result["pinch"] = pinch
+            result["fist_edge"] = fist_edge
+            result["open_edge"] = open_edge
+            result["fingers"] = fingers
+            result["confidence"] = 100 if tracking else 0
+
+            result["preview_rgb"] = self._build_preview(
+                frame,
+                result
+            )
+
+            self._publish(result)
+
+        # end while
+
+        if not got_frame:
+
+            self._publish(
+                default_result(
+                    STATUS_CAMERA_UNAVAILABLE,
+                    "Camera unavailable"
+                )
+            )
+
+    # =====================================================
+    # PREVIEW
+    # =====================================================
+
+    def _build_preview(self, frame, result):
+
+        try:
+
+            height, width = frame.shape[:2]
+
+            cv2.rectangle(
+                frame,
+                (0, 0),
+                (width, 44),
+                (5, 10, 5),
+                -1
+            )
+
+            status = result.get("status")
+
+            if status == STATUS_CAMERA_UNAVAILABLE:
+
+                banner = "CAMERA UNAVAILABLE"
+
+            elif status == STATUS_TRACKING_UNAVAILABLE:
+
+                banner = "LIVE  |  HAND TRACKING UNAVAILABLE"
+
+            elif result.get("tracking"):
+
+                banner = "LIVE  |  HAND DETECTED"
+
+            else:
+
+                banner = "LIVE  |  SHOW YOUR HAND"
+
+            cv2.putText(
+                frame,
+                banner,
+                (10, 29),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (215, 255, 60),
+                2,
+                cv2.LINE_AA
+            )
+
+            if status == STATUS_OK:
+
+                if result.get("swipe"):
+
+                    gesture_text = "SWIPE " + result["swipe"]
+
+                elif result.get("pinch"):
+
+                    gesture_text = "PINCH  |  TURBO"
+
+                elif result.get("tracking"):
+
+                    gesture_text = (
+                        f"HAND  |  {result.get('fingers', 0)} FINGERS"
+                    )
+
+                else:
+
+                    gesture_text = "READY"
+
+                cv2.putText(
+                    frame,
+                    gesture_text,
+                    (10, 74),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (230, 240, 190),
+                    2,
+                    cv2.LINE_AA
+                )
+
+            # Downscale for the Pygame panel
+
+            frame = cv2.resize(
+                frame,
+                (480, 360),
+                interpolation=cv2.INTER_AREA
+            )
+
+            return cv2.cvtColor(
+                frame,
+                cv2.COLOR_BGR2RGB
+            )
+
+        except Exception:
+
+            return None
+
+    # =====================================================
+    # PUBLISH / READ
+    # =====================================================
+
+    def _publish(self, result):
+
+        with self._lock:
+
+            self._result = result
+
+    def get_result(self):
+
+        with self._lock:
+
+            return dict(self._result)
+
+    # =====================================================
+    # HELPERS
     # =====================================================
 
     @staticmethod
-    def distance(
-        a,
-        b
-    ):
+    def _distance(a, b):
 
-        return np.sqrt(
-
-            (a.x - b.x) ** 2
-
-            +
-
-            (a.y - b.y) ** 2
+        return float(
+            np.sqrt(
+                (a.x - b.x) ** 2
+                +
+                (a.y - b.y) ** 2
+            )
         )
 
-    # =====================================================
-    # FINGER COUNT
-    # =====================================================
-
-    def count_fingers(
-        self,
-        lm
-    ):
+    @staticmethod
+    def _count_fingers(lm):
 
         count = 0
 
-        # Index
         if lm[8].y < lm[6].y:
-
             count += 1
-
-        # Middle
         if lm[12].y < lm[10].y:
-
             count += 1
-
-        # Ring
         if lm[16].y < lm[14].y:
-
             count += 1
-
-        # Pinky
         if lm[20].y < lm[18].y:
-
             count += 1
 
-        # Thumb
-        thumb = self.distance(
-            lm[4],
-            lm[5]
-        )
+        thumb = HandTracker._distance(lm[4], lm[5])
+        reference = HandTracker._distance(lm[4], lm[17])
 
-        thumb_tip = self.distance(
-            lm[4],
-            lm[17]
-        )
-
-        if thumb > thumb_tip * 0.65:
-
+        if thumb > reference * 0.65:
             count += 1
 
         return count
 
     # =====================================================
-    # UPDATE
+    # COMPATIBILITY
     # =====================================================
 
     def update(self):
 
-        result = {
-
-            "tracking": False,
-
-            "swipe": None,
-
-            "pinch": False,
-
-            "fist_edge": False,
-
-            "open_edge": False,
-
-            "fingers": 0,
-
-            "confidence": 0,
-
-            "preview_rgb": None,
-
-            "fps": self.fps
-        }
-
-        # =================================================
-        # CAMERA FRAME
-        # =================================================
-
-        success, frame = self.cap.read()
-
-        if not success:
-
-            return result
-
-        # =================================================
-        # MIRROR
-        # =================================================
-
-        frame = cv2.flip(
-            frame,
-            1
-        )
-
-        # =================================================
-        # FPS
-        # =================================================
-
-        self.frame_count += 1
-
-        now = time.time()
-
-        elapsed = (
-            now
-            - self.fps_timer
-        )
-
-        if elapsed >= 1.0:
-
-            self.fps = (
-                self.frame_count
-                / elapsed
-            )
-
-            self.frame_count = 0
-
-            self.fps_timer = now
-
-        result["fps"] = self.fps
-
-        # =================================================
-        # MEDIAPIPE
-        # =================================================
-
-        rgb = cv2.cvtColor(
-
-            frame,
-
-            cv2.COLOR_BGR2RGB
-        )
-
-        processed = self.hands.process(
-            rgb
-        )
-
-        # =================================================
-        # HAND
-        # =================================================
-
-        if processed.multi_hand_landmarks:
-
-            hand = (
-                processed.multi_hand_landmarks[0]
-            )
-
-            lm = hand.landmark
-
-            result["tracking"] = True
-
-            result["confidence"] = 100
-
-            # -------------------------------------------------
-            # DRAW LANDMARKS
-            # -------------------------------------------------
-
-            self.mp_draw.draw_landmarks(
-
-                frame,
-
-                hand,
-
-                self.mp_hands.HAND_CONNECTIONS,
-
-                self.mp_draw.DrawingSpec(
-
-                    color=(155, 188, 15),
-
-                    thickness=2,
-
-                    circle_radius=3
-                ),
-
-                self.mp_draw.DrawingSpec(
-
-                    color=(215, 255, 60),
-
-                    thickness=2
-                )
-            )
-
-            # =================================================
-            # PALM CENTER
-            # =================================================
-
-            center = np.array([
-
-                lm[9].x,
-
-                lm[9].y
-            ])
-
-            self.history.append(
-                center
-            )
-
-            # =================================================
-            # SWIPE
-            # =================================================
-
-            if len(self.history) >= 7:
-
-                now = time.time()
-
-                if (
-                    now
-                    - self.last_swipe_time
-                    >= self.swipe_cooldown
-                ):
-
-                    start = self.history[0]
-
-                    end = self.history[-1]
-
-                    dx = end[0] - start[0]
-
-                    dy = end[1] - start[1]
-
-                    abs_dx = abs(dx)
-
-                    abs_dy = abs(dy)
-
-                    gesture = None
-
-                    # -----------------------------------------
-                    # RIGHT / LEFT
-                    # -----------------------------------------
-
-                    if abs_dx > abs_dy:
-
-                        if abs_dx > 0.12:
-
-                            if dx > 0:
-
-                                gesture = "RIGHT"
-
-                            else:
-
-                                gesture = "LEFT"
-
-                    # -----------------------------------------
-                    # UP / DOWN
-                    # -----------------------------------------
-
-                    else:
-
-                        if abs_dy > 0.12:
-
-                            if dy > 0:
-
-                                gesture = "DOWN"
-
-                            else:
-
-                                gesture = "UP"
-
-                    if gesture:
-
-                        result["swipe"] = gesture
-
-                        self.history.clear()
-
-                        self.last_swipe_time = now
-
-            # =================================================
-            # FINGERS
-            # =================================================
-
-            fingers = self.count_fingers(
-                lm
-            )
-
-            result["fingers"] = fingers
-
-            # =================================================
-            # PINCH
-            # =================================================
-
-            pinch_distance = self.distance(
-
-                lm[4],
-
-                lm[8]
-            )
-
-            pinch = (
-                pinch_distance < 0.055
-            )
-
-            result["pinch"] = pinch
-
-            # =================================================
-            # FIST
-            # =================================================
-
-            fist = (
-                fingers <= 1
-                and
-                not pinch
-            )
-
-            fist_edge = (
-                fist
-                and
-                not self.last_fist
-            )
-
-            result["fist_edge"] = (
-                fist_edge
-            )
-
-            # =================================================
-            # OPEN PALM
-            # =================================================
-
-            open_palm = (
-                fingers >= 4
-            )
-
-            open_edge = (
-
-                open_palm
-
-                and
-
-                not self.last_open
-            )
-
-            result["open_edge"] = (
-                open_edge
-            )
-
-            # =================================================
-            # SAVE STATES
-            # =================================================
-
-            self.last_pinch = pinch
-
-            self.last_fist = fist
-
-            self.last_open = open_palm
-
-        else:
-
-            self.history.clear()
-
-            self.last_pinch = False
-
-            self.last_fist = False
-
-            self.last_open = False
-
-        # =================================================
-        # CAMERA UI
-        # =================================================
-
-        cv2.rectangle(
-
-            frame,
-
-            (
-                0,
-                0
-            ),
-
-            (
-                640,
-                48
-            ),
-
-            (
-                5,
-                10,
-                5
-            ),
-
-            -1
-        )
-
-        if result["tracking"]:
-
-            status = "LIVE  |  HAND DETECTED"
-
-        else:
-
-            status = "LIVE  |  SHOW YOUR HAND"
-
-        cv2.putText(
-
-            frame,
-
-            status,
-
-            (
-                12,
-                30
-            ),
-
-            cv2.FONT_HERSHEY_SIMPLEX,
-
-            0.65,
-
-            (
-                215,
-                255,
-                60
-            ),
-
-            2
-        )
-
-        # =================================================
-        # GESTURE TEXT
-        # =================================================
-
-        if result["swipe"]:
-
-            gesture_text = (
-                "MOVE "
-                + result["swipe"]
-            )
-
-        elif result["pinch"]:
-
-            gesture_text = (
-                "PINCH | TURBO"
-            )
-
-        elif result["fist_edge"]:
-
-            gesture_text = (
-                "FIST | PAUSE"
-            )
-
-        elif result["open_edge"]:
-
-            gesture_text = (
-                "OPEN PALM"
-            )
-
-        else:
-
-            gesture_text = "READY"
-
-        cv2.putText(
-
-            frame,
-
-            gesture_text,
-
-            (
-                12,
-                78
-            ),
-
-            cv2.FONT_HERSHEY_SIMPLEX,
-
-            0.55,
-
-            (
-                230,
-                240,
-                190
-            ),
-
-            2
-        )
-
-        # =================================================
-        # CONVERT FOR PYGAME
-        # =================================================
-
-        result["preview_rgb"] = (
-            cv2.cvtColor(
-                frame,
-                cv2.COLOR_BGR2RGB
-            )
-        )
-
-        return result
+        return self.get_result()
 
     # =====================================================
     # CLOSE
@@ -612,13 +671,25 @@ class HandTracker:
 
     def close(self):
 
+        self._running = False
+
         try:
 
-            self.hands.close()
+            self._thread.join(timeout=2.0)
 
         except Exception:
 
             pass
+
+        if self.hands is not None:
+
+            try:
+
+                self.hands.close()
+
+            except Exception:
+
+                pass
 
         try:
 
@@ -627,5 +698,3 @@ class HandTracker:
         except Exception:
 
             pass
-
-        cv2.destroyAllWindows()
