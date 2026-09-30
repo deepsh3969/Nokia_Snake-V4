@@ -31,3 +31,5 @@ Thumbs.db
 
 # Test artifacts
 tests/artifacts/
+.vercel
+.env*
